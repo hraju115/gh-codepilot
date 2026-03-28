@@ -1,0 +1,4 @@
+# Add one repo per line in owner/repo format
+# These repos will be watched for PR/issue activity
+owner/repo-name
+owner/another-repo

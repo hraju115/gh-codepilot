@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+
+# Runtime data
+open_items.json
+events.jsonl
+muted.json
+.notif_state.json
+.state.json
+cron.log
+
+# Config with actual repo names
+repos.conf
+
+# Cloned repos
+repos/
+
+# pyenv
+.python-version

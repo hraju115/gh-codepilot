@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0d1117">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" type="image/png" href="/static/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <title>GitHub Activity</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0d1117; color: #e6edf3; padding: 24px; max-width: 900px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
+    h1 { font-size: 22px; font-weight: 600; }
+    #last-updated { font-size: 13px; color: #8b949e; }
+    #notif-banner { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 8px 14px; font-size: 13px; display: none; align-items: center; gap: 10px; margin-bottom: 16px; }
+    #notif-banner button { background: #238636; color: #fff; border: none; border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 13px; }
+    #notif-banner button:hover { background: #2ea043; }
+
+    .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid #21262d; flex: 1; }
+    .tab { padding: 10px 20px; font-size: 14px; font-weight: 500; color: #8b949e; cursor: pointer; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; background: none; border-top: none; border-left: none; border-right: none; }
+    .tab:hover { color: #e6edf3; }
+    .tab.active { color: #e6edf3; border-bottom-color: #f78166; }
+    .tab .count { background: #30363d; color: #8b949e; font-size: 11px; padding: 1px 7px; border-radius: 10px; margin-left: 6px; }
+    .tab.active .count { background: #f78166; color: #fff; }
+
+    .filter-select { background: #161b22; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer; }
+    .filter-select:focus { outline: none; border-color: #58a6ff; }
+    .filter-select option { background: #161b22; }
+    .muted-toggle { background: none; border: 1px solid #30363d; color: #8b949e; border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+    .muted-toggle:hover { color: #e6edf3; border-color: #484f58; }
+    .muted-toggle.active { color: #e6edf3; border-color: #58a6ff; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .item-card { border: 1px solid #21262d; border-radius: 8px; margin-bottom: 10px; background: #161b22; overflow: hidden; }
+    .item-card.muted { opacity: 0.5; }
+    .item-header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; flex-wrap: wrap; }
+    .item-title { flex: 1; min-width: 0; }
+    .item-title a { color: #e6edf3; text-decoration: none; font-size: 14px; font-weight: 500; }
+    .item-title a:hover { color: #58a6ff; text-decoration: underline; }
+    .item-repo { font-size: 11px; color: #8b949e; background: #21262d; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+
+    /* Status badges */
+    .status-badges { display: flex; gap: 5px; align-items: center; }
+    .ci-badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
+    .ci-success { background: #238636; color: #fff; }
+    .ci-failure { background: #da3633; color: #fff; }
+    .ci-pending { background: #d29922; color: #fff; }
+    .review-badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
+    .review-approved { background: #238636; color: #fff; }
+    .review-changes { background: #da3633; color: #fff; }
+    .review-pending { background: #30363d; color: #8b949e; }
+    .draft-badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px; background: #30363d; color: #8b949e; }
+
+    .item-meta { font-size: 12px; color: #8b949e; width: 100%; margin-top: 2px; }
+    .item-meta .author { color: #58a6ff; }
+    .item-actions { display: flex; gap: 6px; align-items: center; }
+
+    .claude-btn { font-size: 11px; color: #fff; background: #8b5cf6; padding: 3px 10px; border-radius: 10px; text-decoration: none; white-space: nowrap; }
+    .claude-btn:hover { background: #7c3aed; }
+    .mute-btn { font-size: 11px; color: #8b949e; background: none; border: 1px solid #30363d; padding: 2px 8px; border-radius: 10px; cursor: pointer; white-space: nowrap; }
+    .mute-btn:hover { color: #e6edf3; border-color: #484f58; }
+    .diff-btn { font-size: 11px; color: #8b949e; background: none; border: 1px solid #30363d; padding: 2px 8px; border-radius: 10px; cursor: pointer; white-space: nowrap; }
+    .diff-btn:hover { color: #e6edf3; border-color: #484f58; }
+
+    .activity-list { border-top: 1px solid #21262d; }
+    .activity-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 14px 8px 28px; font-size: 13px; border-top: 1px solid #1b2028; }
+    .activity-item:first-child { border-top: none; }
+    .activity-item:hover { background: #1c2129; }
+
+    .badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px; white-space: nowrap; flex-shrink: 0; margin-top: 1px; }
+    .badge-new_pr { background: #238636; color: #fff; }
+    .badge-new_comment { background: #1f6feb; color: #fff; }
+    .badge-new_commit { background: #d29922; color: #fff; }
+    .badge-new_issue { background: #a371f7; color: #fff; }
+    .badge-issue_comment { background: #1f6feb; color: #fff; }
+
+    .activity-body { flex: 1; min-width: 0; }
+    .activity-details { color: #8b949e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    .activity-meta { color: #484f58; margin-top: 2px; }
+    .activity-meta .a-author { color: #58a6ff; }
+
+    /* Expandable detail */
+    .detail-container { border-top: 1px solid #21262d; display: none; }
+    .detail-container.open { display: block; }
+    .detail-body { padding: 14px; font-size: 13px; color: #c9d1d9; line-height: 1.6; border-bottom: 1px solid #21262d; word-break: break-word; }
+    .detail-body:empty { display: none; }
+    .detail-comment { padding: 14px; margin: 8px 14px; border: 1px solid #21262d; border-radius: 6px; background: #0d1117; }
+    .detail-comment-header { font-size: 12px; margin-bottom: 6px; display: flex; gap: 8px; align-items: center; }
+    .detail-comment-header .a-author { color: #58a6ff; font-weight: 600; }
+    .detail-comment-header .review-state { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 8px; }
+    .detail-comment-header .state-approved { background: #238636; color: #fff; }
+    .detail-comment-header .state-changes_requested { background: #da3633; color: #fff; }
+    .detail-comment-header .state-commented { background: #30363d; color: #8b949e; }
+    .detail-comment-header time { color: #484f58; }
+    .detail-comment-body { font-size: 13px; color: #c9d1d9; line-height: 1.6; word-break: break-word; }
+    .detail-comment-body p { margin: 0 0 8px; }
+    .detail-comment-body p:last-child { margin-bottom: 0; }
+    .detail-comment-body h1, .detail-comment-body h2, .detail-comment-body h3 { font-size: 14px; margin: 12px 0 6px; color: #e6edf3; border-bottom: 1px solid #21262d; padding-bottom: 4px; }
+    .detail-comment-body h1 { font-size: 16px; }
+    .detail-comment-body code { background: #21262d; padding: 2px 5px; border-radius: 4px; font-size: 12px; font-family: "Cascadia Code", "Fira Code", Menlo, monospace; }
+    .detail-comment-body pre { background: #161b22; border: 1px solid #21262d; border-radius: 6px; padding: 10px; overflow-x: auto; margin: 8px 0; }
+    .detail-comment-body pre code { background: none; padding: 0; }
+    .detail-comment-body ul, .detail-comment-body ol { padding-left: 20px; margin: 6px 0; }
+    .detail-comment-body li { margin: 2px 0; }
+    .detail-comment-body blockquote { border-left: 3px solid #30363d; padding-left: 12px; color: #8b949e; margin: 8px 0; }
+    .detail-comment-body a { color: #58a6ff; }
+    .detail-comment-body img { max-width: 100%; border-radius: 6px; margin: 8px 0; }
+    .detail-comment-body table { border-collapse: collapse; margin: 8px 0; }
+    .detail-comment-body th, .detail-comment-body td { border: 1px solid #30363d; padding: 6px 10px; font-size: 12px; }
+    .detail-comment-body th { background: #21262d; }
+    .detail-loading { padding: 20px; text-align: center; color: #8b949e; font-size: 13px; }
+    .detail-section-label { font-size: 11px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 14px 4px; }
+
+    /* Diff viewer */
+    .diff-container { border-top: 1px solid #21262d; max-height: 500px; overflow: auto; display: none; }
+    .diff-container.open { display: block; }
+    .diff-container pre { font-family: "Cascadia Code", "Fira Code", Menlo, monospace; font-size: 12px; padding: 12px; margin: 0; white-space: pre; overflow-x: auto; }
+    .diff-line { display: block; }
+    .diff-add { background: rgba(63,185,80,0.15); color: #3fb950; }
+    .diff-del { background: rgba(248,81,73,0.15); color: #ff7b72; }
+    .diff-hunk { color: #58a6ff; }
+    .diff-file { color: #e6edf3; font-weight: 600; padding: 8px 0 4px; }
+    .diff-loading { padding: 20px; text-align: center; color: #8b949e; font-size: 13px; }
+
+    .empty-state { text-align: center; color: #8b949e; padding: 60px 20px; font-size: 15px; }
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #238636; margin-right: 6px; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .new { animation: flash 1.5s ease-out; }
+    @keyframes flash { 0% { background: #1f3a1f; } 100% { background: transparent; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>GitHub Activity</h1>
+    <div>
+      <span class="status-dot"></span>
+      <span id="last-updated">Updated just now</span>
+    </div>
+  </header>
+
+  <div id="notif-banner">
+    Enable browser notifications to get alerts for new activity
+    <button onclick="requestNotifPermission()">Enable</button>
+  </div>
+
+  <div class="toolbar">
+    <div class="tabs">
+      <button class="tab {{ 'active' if active_tab == 'pr' }}" data-tab="pr">
+        Pull Requests<span class="count" id="pr-count">{{ pr_count }}</span>
+      </button>
+      <button class="tab {{ 'active' if active_tab == 'issue' }}" data-tab="issue">
+        Issues<span class="count" id="issue-count">{{ issue_count }}</span>
+      </button>
+    </div>
+    <select class="filter-select" id="repo-filter" onchange="applyFilters()">
+      <option value="">All repos</option>
+      {% for repo in repos %}
+      <option value="{{ repo }}" {{ 'selected' if repo == active_repo }}>{{ repo.split('/')[-1] }}</option>
+      {% endfor %}
+    </select>
+    <select class="filter-select" id="review-filter" onchange="applyFilters()">
+      <option value="">All statuses</option>
+      <option value="needs_review" {{ 'selected' if active_review == 'needs_review' }}>Needs review</option>
+      <option value="approved" {{ 'selected' if active_review == 'approved' }}>Approved</option>
+      <option value="changes_requested" {{ 'selected' if active_review == 'changes_requested' }}>Changes requested</option>
+      <option value="draft" {{ 'selected' if active_review == 'draft' }}>Draft</option>
+    </select>
+    <button class="muted-toggle {{ 'active' if show_muted }}" onclick="toggleMuted()">
+      {{ 'Hide muted' if show_muted else 'Show muted' }}
+    </button>
+  </div>
+
+  {% macro render_items(items, panel_id, category) %}
+  <div class="tab-panel {{ 'active' if active_tab == category }}" id="panel-{{ panel_id }}" data-server-time="{{ server_time }}" data-category="{{ category }}">
+    {% if not items %}
+    <div class="empty-state">No open {{ 'pull requests' if category == 'pr' else 'issues' }}{{ ' in ' + active_repo if active_repo else '' }}</div>
+    {% endif %}
+    {% for item in items %}
+    {% set item_key = item.repo + '#' + item.number|string %}
+    <div class="item-card {{ 'muted' if item_key in muted }}" data-repo="{{ item.repo }}" data-number="{{ item.number }}" data-key="{{ item_key }}">
+      <div class="item-header">
+        <div class="item-title">
+          <a href="{{ item.url }}" target="_blank">#{{ item.number }} {{ item.title }}</a>
+        </div>
+        {% if category == 'pr' %}
+        <div class="status-badges">
+          {% if item.is_draft %}
+          <span class="draft-badge">Draft</span>
+          {% endif %}
+          {% if item.ci_status == 'success' %}
+          <span class="ci-badge ci-success">CI</span>
+          {% elif item.ci_status == 'failure' %}
+          <span class="ci-badge ci-failure">CI</span>
+          {% elif item.ci_status == 'pending' %}
+          <span class="ci-badge ci-pending">CI</span>
+          {% endif %}
+          {% if item.review_decision == 'APPROVED' %}
+          <span class="review-badge review-approved">Approved</span>
+          {% elif item.review_decision == 'CHANGES_REQUESTED' %}
+          <span class="review-badge review-changes">Changes</span>
+          {% elif item.review_decision == 'REVIEW_REQUIRED' %}
+          <span class="review-badge review-pending">Review</span>
+          {% endif %}
+        </div>
+        {% endif %}
+        <span class="item-repo">{{ item.repo.split('/')[-1] }}</span>
+        <div class="item-actions">
+          <button class="diff-btn" onclick="toggleDetail(this, '{{ item.repo }}', {{ item.number }}, '{{ category }}')">Details</button>
+          {% if category == 'pr' %}
+          <button class="diff-btn" onclick="toggleDiff(this, '{{ item.repo }}', {{ item.number }})">Diff</button>
+          {% endif %}
+          <a class="claude-btn" href="/terminal?repo={{ item.repo }}&number={{ item.number }}&type={{ category }}&title={{ item.title | urlencode }}">Claude Code</a>
+          <button class="mute-btn" onclick="muteItem('{{ item_key }}', this)">
+            {{ 'Unmute' if item_key in muted else 'Mute' }}
+          </button>
+        </div>
+      </div>
+      <div class="item-meta" style="padding: 0 14px 10px;">
+        by <span class="author">@{{ item.author }}</span>
+        {% if item.created_at %}
+        &middot; opened <time class="relative-time" datetime="{{ item.created_at }}"></time>
+        {% endif %}
+        {% if item.activity %}
+        &middot; last activity <time class="relative-time" datetime="{{ item.last_activity }}"></time>
+        {% endif %}
+      </div>
+      <div class="detail-container" id="detail-{{ item.repo | replace('/', '--') }}-{{ item.number }}"></div>
+      {% if category == 'pr' %}
+      <div class="diff-container" id="diff-{{ item.repo | replace('/', '--') }}-{{ item.number }}"></div>
+      {% endif %}
+      {% if item.activity %}
+      <div class="activity-list">
+        {% for event in item.activity %}
+        <div class="activity-item" data-ts="{{ event.timestamp }}">
+          <span class="badge badge-{{ event.event_type }}">
+            {% if event.event_type == 'new_comment' %}Comment{% elif event.event_type == 'new_commit' %}Commit{% elif event.event_type == 'issue_comment' %}Comment{% elif event.event_type == 'new_pr' %}Update{% elif event.event_type == 'new_issue' %}Update{% else %}{{ event.event_type }}{% endif %}
+          </span>
+          <div class="activity-body">
+            {% if event.details %}
+            <div class="activity-details">{{ event.details }}</div>
+            {% endif %}
+            <div class="activity-meta">
+              {% if event.author %}<span class="a-author">@{{ event.author }}</span> &middot; {% endif %}
+              <time class="relative-time" datetime="{{ event.timestamp }}"></time>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endmacro %}
+
+  {{ render_items(pr_items, 'pr', 'pr') }}
+  {{ render_items(issue_items, 'issue', 'issue') }}
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+  <script>
+    let lastServerTime = sessionStorage.getItem('lastServerTime') || document.querySelector('.tab-panel').dataset.serverTime;
+    let activeTab = '{{ active_tab }}';
+
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        activeTab = tab.dataset.tab;
+        document.getElementById('panel-' + activeTab).classList.add('active');
+        applyFilters(false);
+      });
+    });
+
+    function applyFilters(reload = true) {
+      const params = new URLSearchParams();
+      params.set('tab', activeTab);
+      const repo = document.getElementById('repo-filter').value;
+      const review = document.getElementById('review-filter').value;
+      if (repo) params.set('repo', repo);
+      if (review) params.set('review', review);
+      {% if show_muted %}params.set('muted', '1');{% endif %}
+      history.replaceState(null, '', '?' + params.toString());
+      if (reload) location.reload();
+    }
+
+    function toggleMuted() {
+      const params = new URLSearchParams(location.search);
+      if (params.get('muted') === '1') {
+        params.delete('muted');
+      } else {
+        params.set('muted', '1');
+      }
+      params.set('tab', activeTab);
+      location.search = params.toString();
+    }
+
+    async function muteItem(key, btn) {
+      const isMuted = btn.textContent.trim() === 'Unmute';
+      const endpoint = isMuted ? '/api/unmute' : '/api/mute';
+      await fetch(endpoint, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({key}),
+      });
+      const card = btn.closest('.item-card');
+      if (isMuted) {
+        card.classList.remove('muted');
+        btn.textContent = 'Mute';
+      } else {
+        card.classList.add('muted');
+        btn.textContent = 'Unmute';
+        // Fade out after a moment if not showing muted
+        {% if not show_muted %}
+        setTimeout(() => card.remove(), 500);
+        {% endif %}
+      }
+    }
+
+    // Detail viewer
+    async function toggleDetail(btn, repo, number, category) {
+      const id = 'detail-' + repo.replace('/', '--') + '-' + number;
+      const container = document.getElementById(id);
+      const card = btn.closest('.item-card');
+      const activityList = card.querySelector('.activity-list');
+      if (container.classList.contains('open')) {
+        container.classList.remove('open');
+        if (activityList) activityList.style.display = '';
+        btn.textContent = 'Details';
+        return;
+      }
+      container.classList.add('open');
+      if (activityList) activityList.style.display = 'none';
+      btn.textContent = 'Hide';
+      if (container.dataset.loaded) return;
+      container.innerHTML = '<div class="detail-loading">Loading...</div>';
+      try {
+        const res = await fetch(`/api/detail?repo=${encodeURIComponent(repo)}&number=${number}&type=${category}`);
+        const data = await res.json();
+        if (data.error) { container.innerHTML = '<div class="detail-loading">Failed to load</div>'; return; }
+
+        let html = '';
+        if (data.body) {
+          html += `<div class="detail-section-label">Description</div>`;
+          html += `<div class="detail-body detail-comment-body">${renderMd(data.body)}</div>`;
+        }
+
+        // Merge comments and reviews, sort by time
+        const items = [];
+        for (const c of (data.comments || [])) {
+          items.push({...c, kind: 'comment'});
+        }
+        for (const r of (data.reviews || [])) {
+          items.push({...r, kind: 'review'});
+        }
+        items.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+
+        if (items.length > 0) {
+          html += `<div class="detail-section-label">Comments & Reviews (${items.length})</div>`;
+          for (const item of items) {
+            const stateHtml = item.kind === 'review' && item.state
+              ? ` <span class="review-state state-${item.state.toLowerCase()}">${item.state.replace('_', ' ').toLowerCase()}</span>`
+              : '';
+            html += `<div class="detail-comment">
+              <div class="detail-comment-header">
+                <span class="a-author">@${escapeHtml(item.author)}</span>${stateHtml}
+                <time>${formatTime(item.created_at)}</time>
+              </div>
+              <div class="detail-comment-body">${renderMd(item.body)}</div>
+            </div>`;
+          }
+        }
+
+        if (!html) html = '<div class="detail-loading">No description or comments</div>';
+        container.innerHTML = html;
+        container.dataset.loaded = '1';
+      } catch (e) {
+        container.innerHTML = '<div class="detail-loading">Failed to load</div>';
+      }
+    }
+
+    function renderMd(str) {
+      if (!str) return '';
+      return DOMPurify.sanitize(marked.parse(str, { breaks: true }));
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    }
+
+    function formatTime(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return d.toLocaleDateString('en-US', {month:'short',day:'numeric'}) + ', ' +
+             d.toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'});
+    }
+
+    // Diff viewer
+    async function toggleDiff(btn, repo, number) {
+      const id = 'diff-' + repo.replace('/', '--') + '-' + number;
+      const container = document.getElementById(id);
+      if (container.classList.contains('open')) {
+        container.classList.remove('open');
+        btn.textContent = 'Diff';
+        return;
+      }
+      btn.textContent = 'Hide diff';
+      container.classList.add('open');
+      container.innerHTML = '<div class="diff-loading">Loading diff...</div>';
+      try {
+        const res = await fetch(`/api/diff?repo=${encodeURIComponent(repo)}&number=${number}`);
+        const data = await res.json();
+        if (data.error) {
+          container.innerHTML = '<div class="diff-loading">Failed to load diff</div>';
+          return;
+        }
+        container.innerHTML = '<pre>' + renderDiff(data.diff) + '</pre>';
+      } catch (e) {
+        container.innerHTML = '<div class="diff-loading">Failed to load diff</div>';
+      }
+    }
+
+    function renderDiff(diff) {
+      return diff.split('\n').map(line => {
+        const escaped = line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        if (line.startsWith('+++') || line.startsWith('---')) {
+          return `<span class="diff-line diff-file">${escaped}</span>`;
+        } else if (line.startsWith('+')) {
+          return `<span class="diff-line diff-add">${escaped}</span>`;
+        } else if (line.startsWith('-')) {
+          return `<span class="diff-line diff-del">${escaped}</span>`;
+        } else if (line.startsWith('@@')) {
+          return `<span class="diff-line diff-hunk">${escaped}</span>`;
+        } else if (line.startsWith('diff --git')) {
+          return `<span class="diff-line diff-file">${escaped}</span>`;
+        }
+        return `<span class="diff-line">${escaped}</span>`;
+      }).join('\n');
+    }
+
+    function relativeTime(iso) {
+      const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+      if (diff < 60) return 'just now';
+      if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+      return Math.floor(diff / 86400) + 'd ago';
+    }
+
+    function updateAllTimes() {
+      document.querySelectorAll('.relative-time').forEach(el => {
+        el.textContent = relativeTime(el.getAttribute('datetime'));
+      });
+    }
+
+    function badgeLabel(type) {
+      const labels = { new_pr: 'Update', new_comment: 'Comment', new_commit: 'Commit', new_issue: 'Update', issue_comment: 'Comment' };
+      return labels[type] || type;
+    }
+
+    function sendBrowserNotification(event) {
+      if (Notification.permission !== 'granted') return;
+      const num = event.number || event.pr_number;
+      const n = new Notification(`[${badgeLabel(event.event_type)}] ${event.repo}#${num}`, {
+        body: `${event.title}\n${event.details || ''}`,
+        tag: `${event.repo}#${num}-${event.timestamp}`,
+      });
+      n.onclick = () => { window.open(event.url, '_blank'); n.close(); };
+    }
+
+    async function pollCategory(category, since) {
+      try {
+        const res = await fetch(`/api/events?since=${encodeURIComponent(since)}&category=${category}`);
+        return await res.json();
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function poll() {
+      const since = lastServerTime;
+      const [prData, issueData] = await Promise.all([pollCategory('pr', since), pollCategory('issue', since)]);
+      const latest = (prData && prData.server_time) || (issueData && issueData.server_time);
+      if (!latest) { document.getElementById('last-updated').textContent = 'Update failed'; return; }
+      let hasNew = false;
+      for (const data of [prData, issueData]) {
+        if (data && data.events && data.events.length > 0) {
+          hasNew = true;
+          for (const event of data.events) sendBrowserNotification(event);
+        }
+      }
+      lastServerTime = latest;
+      if (hasNew) { sessionStorage.setItem('lastServerTime', latest); location.reload(); }
+      else { document.getElementById('last-updated').textContent = 'Updated ' + relativeTime(latest); }
+    }
+
+    function requestNotifPermission() {
+      Notification.requestPermission().then(p => { if (p === 'granted') document.getElementById('notif-banner').style.display = 'none'; });
+    }
+
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/static/sw.js');
+    updateAllTimes();
+    setInterval(updateAllTimes, 30000);
+    setInterval(poll, 30000);
+    if ('Notification' in window && Notification.permission === 'default') document.getElementById('notif-banner').style.display = 'flex';
+  </script>
+</body>
+</html>

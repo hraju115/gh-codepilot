@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0d1117">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" type="image/png" href="/static/icon-192.png">
+  <title>Claude Code — {{ repo }}#{{ number }}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0d1117; color: #e6edf3; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    .topbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #21262d; background: #161b22; flex-shrink: 0; }
+    .topbar a { color: #58a6ff; text-decoration: none; font-size: 13px; }
+    .topbar a:hover { text-decoration: underline; }
+    .topbar .title { font-size: 14px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .topbar .type-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #238636; color: #fff; }
+    .topbar .type-badge.issue { background: #a371f7; }
+
+    .main { display: flex; flex: 1; overflow: hidden; }
+
+    /* Sidebar */
+    .sidebar { width: 280px; border-right: 1px solid #21262d; background: #161b22; display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+    .sidebar-header { padding: 12px 14px; border-bottom: 1px solid #21262d; font-size: 13px; font-weight: 600; color: #8b949e; display: flex; justify-content: space-between; align-items: center; }
+    .new-session-btn { background: #238636; color: #fff; border: none; border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; font-weight: 500; }
+    .new-session-btn:hover { background: #2ea043; }
+    .session-list { flex: 1; overflow-y: auto; }
+    .session-item { padding: 10px 14px; border-bottom: 1px solid #1b2028; cursor: pointer; transition: background 0.1s; }
+    .session-item:hover { background: #1c2129; }
+    .session-item.active { background: #1c2129; border-left: 3px solid #58a6ff; }
+    .session-slug { font-size: 12px; color: #58a6ff; margin-bottom: 3px; }
+    .session-prompt { font-size: 12px; color: #8b949e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px; }
+    .session-meta { font-size: 11px; color: #484f58; margin-top: 4px; }
+    .session-branch { font-size: 11px; color: #d29922; }
+    .no-sessions { padding: 20px 14px; color: #484f58; font-size: 13px; text-align: center; }
+
+    /* Terminal area */
+    .terminal-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+    #terminal { flex: 1; }
+    .terminal-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(13,17,23,0.9); z-index: 10; flex-direction: column; gap: 8px; }
+    .terminal-overlay .status { font-size: 14px; color: #8b949e; }
+    .terminal-overlay .spinner { width: 24px; height: 24px; border: 3px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="/?tab={{ category }}">< Dashboard</a>
+    <span class="type-badge {{ 'issue' if category == 'issue' else '' }}">{{ 'Issue' if category == 'issue' else 'PR' }}</span>
+    <span class="title">#{{ number }} {{ title }}</span>
+  </div>
+
+  <div class="main">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        Sessions
+        <button class="new-session-btn" onclick="startNew()">+ New</button>
+      </div>
+      <div class="session-list" id="session-list">
+        <div class="no-sessions" id="loading-sessions">Loading sessions...</div>
+      </div>
+    </div>
+    <div class="terminal-area">
+      <div class="terminal-overlay" id="overlay">
+        <div class="spinner"></div>
+        <div class="status" id="overlay-status">Select or start a session</div>
+      </div>
+      <div id="terminal"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"></script>
+  <script>
+    const REPO = '{{ repo }}';
+    const NUMBER = {{ number }};
+    const CATEGORY = '{{ category }}';
+
+    // Terminal setup
+    const term = new Terminal({
+      theme: { background: '#0d1117', foreground: '#e6edf3', cursor: '#58a6ff',
+               selectionBackground: '#264f78', black: '#484f58', red: '#ff7b72',
+               green: '#3fb950', yellow: '#d29922', blue: '#58a6ff',
+               magenta: '#bc8cff', cyan: '#39d353', white: '#e6edf3' },
+      fontFamily: '"Cascadia Code", "Fira Code", Menlo, monospace',
+      fontSize: 14,
+      cursorBlink: true,
+    });
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(document.getElementById('terminal'));
+    fitAddon.fit();
+
+    // Socket setup
+    const socket = io();
+    let termActive = false;
+    let activeSessionId = null;
+
+    // Resize handling
+    window.addEventListener('resize', () => {
+      fitAddon.fit();
+      if (termActive) {
+        socket.emit('resize', { rows: term.rows, cols: term.cols });
+      }
+    });
+
+    // Terminal I/O
+    term.onData(data => {
+      if (termActive) socket.emit('pty_input', { data });
+    });
+
+    socket.on('pty_output', msg => {
+      term.write(msg.data);
+    });
+
+    socket.on('terminal_status', msg => {
+      showOverlay(msg.message);
+    });
+
+    socket.on('terminal_ready', () => {
+      hideOverlay();
+      termActive = true;
+      term.focus();
+      // Send initial resize
+      socket.emit('resize', { rows: term.rows, cols: term.cols });
+    });
+
+    socket.on('terminal_error', msg => {
+      showOverlay(msg.message, true);
+    });
+
+    socket.on('pty_exit', () => {
+      termActive = false;
+      showOverlay('Session ended', true);
+      loadSessions();
+    });
+
+    // Overlay helpers
+    function showOverlay(message, hideSpinner) {
+      const overlay = document.getElementById('overlay');
+      const spinner = overlay.querySelector('.spinner');
+      overlay.classList.remove('hidden');
+      document.getElementById('overlay-status').textContent = message;
+      spinner.style.display = hideSpinner ? 'none' : 'block';
+    }
+
+    function hideOverlay() {
+      document.getElementById('overlay').classList.add('hidden');
+    }
+
+    // Session management
+    function startNew() {
+      if (termActive) {
+        if (!confirm('End current session and start a new one?')) return;
+        socket.emit('pty_input', { data: '\x03' }); // ctrl-c
+      }
+      term.clear();
+      term.reset();
+      activeSessionId = null;
+      highlightSession(null);
+      showOverlay('Preparing...');
+      socket.emit('start_terminal', { repo: REPO, number: NUMBER, type: CATEGORY, session_id: null });
+    }
+
+    function resumeSession(sessionId) {
+      if (termActive) {
+        if (!confirm('End current session and resume this one?')) return;
+      }
+      term.clear();
+      term.reset();
+      activeSessionId = sessionId;
+      highlightSession(sessionId);
+      showOverlay('Resuming session...');
+      socket.emit('start_terminal', { repo: REPO, number: NUMBER, type: CATEGORY, session_id: sessionId });
+    }
+
+    function highlightSession(sessionId) {
+      document.querySelectorAll('.session-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.sessionId === sessionId);
+      });
+    }
+
+    // Load session list
+    async function loadSessions() {
+      try {
+        const res = await fetch(`/api/sessions?repo=${encodeURIComponent(REPO)}&number=${NUMBER}&type=${CATEGORY}`);
+        const data = await res.json();
+        const list = document.getElementById('session-list');
+
+        if (data.sessions.length === 0) {
+          list.innerHTML = '<div class="no-sessions">No previous sessions</div>';
+          return;
+        }
+
+        list.innerHTML = data.sessions.map(s => `
+          <div class="session-item${s.session_id === activeSessionId ? ' active' : ''}"
+               data-session-id="${escapeHtml(s.session_id)}"
+               onclick="resumeSession('${escapeHtml(s.session_id)}')">
+            ${s.slug ? `<div class="session-slug">${escapeHtml(s.slug)}</div>` : ''}
+            <div class="session-prompt">${escapeHtml(s.first_prompt)}</div>
+            <div class="session-meta">${formatTime(s.started_at)}</div>
+            ${s.git_branch ? `<div class="session-branch">branch: ${escapeHtml(s.git_branch)}</div>` : ''}
+          </div>
+        `).join('');
+      } catch (e) {
+        document.getElementById('session-list').innerHTML = '<div class="no-sessions">Failed to load sessions</div>';
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function formatTime(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' +
+             d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+
+    // Warn before closing active session
+    window.addEventListener('beforeunload', e => {
+      if (termActive) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
+
+    // Init
+    showOverlay('Select or start a session', true);
+    loadSessions();
+  </script>
+</body>
+</html>
