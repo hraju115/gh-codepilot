@@ -396,5 +396,13 @@ def handle_disconnect():
     pty_manager.kill_pty(request.sid)
 
 
+def _reaper():
+    """Periodically reap dead PTY sessions."""
+    while True:
+        eventlet.sleep(60)
+        pty_manager.reap_dead_sessions()
+
+
 if __name__ == "__main__":
+    eventlet.spawn(_reaper)
     socketio.run(app, host="127.0.0.1", port=5050, debug=True)

@@ -100,3 +100,17 @@ def _cleanup(sid):
             os.waitpid(session["pid"], os.WNOHANG)
         except (OSError, ChildProcessError):
             pass
+
+
+def reap_dead_sessions():
+    """Remove sessions whose child process has exited. Call periodically."""
+    dead = []
+    for sid, session in active_ptys.items():
+        try:
+            pid, status = os.waitpid(session["pid"], os.WNOHANG)
+            if pid != 0:
+                dead.append(sid)
+        except (OSError, ChildProcessError):
+            dead.append(sid)
+    for sid in dead:
+        _cleanup(sid)
