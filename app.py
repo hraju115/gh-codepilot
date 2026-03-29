@@ -273,12 +273,13 @@ def api_detail():
         )
 
     if item.returncode != 0:
-        return jsonify(error="failed to fetch details"), 500
+        # Fallback: build details from local events.jsonl
+        return _detail_from_events(repo, number, category)
 
     try:
         data = json.loads(item.stdout)
     except json.JSONDecodeError:
-        return jsonify(error="invalid response"), 500
+        return _detail_from_events(repo, number, category)
 
     body = data.get("body", "") or ""
     comments = []
@@ -300,6 +301,27 @@ def api_detail():
                 })
 
     return jsonify(body=body, comments=comments, reviews=reviews)
+
+
+def _detail_from_events(repo, number, category):
+    """Build detail view from local events when GitHub API is unavailable."""
+    events = read_events(hours=168, category=category)
+    comments = []
+    for e in events:
+        if e.get("repo") == repo and e.get("number") == number:
+            if e["event_type"] in ("new_comment", "issue_comment"):
+                details = e.get("details", "")
+                author = e.get("author", "")
+                # Strip "author: " prefix from details if present
+                prefix = f"{author}: "
+                body = details[len(prefix):] if details.startswith(prefix) else details
+                comments.append({
+                    "author": author,
+                    "body": body,
+                    "created_at": e.get("timestamp", ""),
+                })
+    comments.sort(key=lambda c: c.get("created_at", ""))
+    return jsonify(body="", comments=comments, reviews=[])
 
 
 # ── Terminal routes ──────────────────────────────────────────────────────────

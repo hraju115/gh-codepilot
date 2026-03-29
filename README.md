@@ -2,11 +2,17 @@
 
 A self-hosted PWA that monitors GitHub PR/issue activity across multiple repos, sends desktop notifications, and provides an integrated Claude Code terminal for interactive AI-assisted code review.
 
+![Dashboard — PR tab with CI badges, review status, and activity](screenshots/dashboard.png)
+
+![Expanded PR details with rendered markdown comments](screenshots/details.png)
+
+![Claude Code terminal with session history sidebar](screenshots/terminal.png)
+
 ## Features
 
 - **PR & Issue Tracking** — All open PRs and issues across watched repos, sorted by recent activity
 - **Activity Feed** — Comments, reviews, commits shown under each item with correct timestamps
-- **Desktop Notifications** — Ubuntu `notify-send` alerts for new PRs, issues, and comments
+- **Desktop Notifications** — Native alerts for new PRs, issues, and comments (Linux + macOS)
 - **Browser Notifications** — PWA push notifications with click-to-open
 - **CI & Review Status** — Green/red/yellow CI badges, review decision badges, draft indicators
 - **Inline Diff Viewer** — View PR diffs without leaving the dashboard
@@ -20,53 +26,46 @@ A self-hosted PWA that monitors GitHub PR/issue activity across multiple repos, 
 
 ### Prerequisites
 
-- Python 3.12+
-- [GitHub CLI](https://cli.github.com/) (`gh`) authenticated with `notifications` scope
+- Python 3.10+
+- [GitHub CLI](https://cli.github.com/) (`gh`) authenticated
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`) installed
-- Ubuntu (for `notify-send` desktop notifications)
+- Linux or macOS
 
-### Install
+### Quick Install
 
 ```bash
-# Clone or copy this directory
-cd ~/notifications
-
-# Create pyenv virtualenv
-pyenv virtualenv 3.12.6 notifications
-pyenv local notifications
-
-# Install dependencies
-pip install flask flask-socketio eventlet
-
-# Configure repos to watch
-cp repos.conf.example repos.conf
-# Edit repos.conf — add your repos, one per line
-
-# Ensure GitHub notifications scope
-gh auth refresh -h github.com -s notifications
-
-# Subscribe to repo activity (run once per repo)
-for repo in $(grep -v '^#' repos.conf | grep -v '^\s*$'); do
-  gh api -X PUT "/repos/$repo/subscription" --input - <<< '{"subscribed":true,"ignored":false}'
-done
+curl -fsSL https://raw.githubusercontent.com/hraju115/gh-codepilot/main/install.sh | bash
 ```
 
-### Run
+This will:
+- Clone the repo to `~/.gh-codepilot`
+- Create a Python venv and install dependencies
+- Set up a cron job for polling (every 10 minutes)
+- Start a background service (systemd on Linux, launchd on macOS)
+
+Then edit `~/.gh-codepilot/repos.conf` to add your repos and visit **http://127.0.0.1:5050**.
+
+### Manual Install
 
 ```bash
-# Start the web app
+git clone https://github.com/hraju115/gh-codepilot.git
+cd gh-codepilot
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp repos.conf.example repos.conf
+# Edit repos.conf — add your repos, one per line
 python app.py
-# Open http://127.0.0.1:5050
-
-# Set up the cron job for polling (every 10 minutes)
-crontab -e
-# Add:
-# */10 * * * * DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus /path/to/pyenv/python /path/to/check_notifications.py >> /path/to/cron.log 2>&1
 ```
 
 ### Install as PWA
 
 Open `http://127.0.0.1:5050` in Chrome/Edge and click the install icon in the address bar.
+
+### Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hraju115/gh-codepilot/main/uninstall.sh | bash
+```
 
 ## Architecture
 

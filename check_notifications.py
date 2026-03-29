@@ -70,12 +70,20 @@ def gh_cli(args):
         return None
 
 
+import platform
+
 def desktop_notify(title, body):
-    subprocess.run(
-        ["notify-send", "--app-name=GitHub", "--icon=dialog-information",
-         "--urgency=normal", title, body],
-        capture_output=True,
-    )
+    if platform.system() == "Darwin":
+        # macOS
+        script = f'display notification "{body}" with title "{title}"'
+        subprocess.run(["osascript", "-e", script], capture_output=True)
+    else:
+        # Linux
+        subprocess.run(
+            ["notify-send", "--app-name=GitHub", "--icon=dialog-information",
+             "--urgency=normal", title, body],
+            capture_output=True,
+        )
 
 
 def log_event(event_type, category, repo, number, title, author, url, details, timestamp):
