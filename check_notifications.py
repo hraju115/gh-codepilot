@@ -201,10 +201,10 @@ def sync_open_items(repos):
 
 # ── Repo Events API ──────────────────────────────────────────────────────────
 
-def process_repo_events(repos, open_items, state):
+def process_repo_events(repos, open_items, state, is_first_run=False):
     """Fetch repo events for all watched repos. Correct timestamps, all users."""
     seen = state.get("seen_event_ids", {})
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Build lookup for open item titles
     all_items = {}
@@ -225,7 +225,7 @@ def process_repo_events(repos, open_items, state):
 
             created_at = event.get("created_at", "")
             if created_at < cutoff:
-                seen[event_id] = True
+                seen[event_id] = created_at
                 continue
 
             actor = event.get("actor", {}).get("login", "")
@@ -285,7 +285,7 @@ def process_repo_events(repos, open_items, state):
                     html_url = issue.get("html_url", "")
                     details = f"{actor}: Issue {action}"
                 else:
-                    seen[event_id] = True
+                    seen[event_id] = created_at
                     continue
 
             # ── PR Events (opened, closed, merged, review_requested, etc.) ──
@@ -305,11 +305,11 @@ def process_repo_events(repos, open_items, state):
                     evt_type = "new_pr"
                     details = f"{actor}: PR {'merged' if merged else action}"
                 else:
-                    seen[event_id] = True
+                    seen[event_id] = created_at
                     continue
 
             else:
-                seen[event_id] = True
+                seen[event_id] = created_at
                 continue
 
             # Look up title from open items if missing
@@ -318,22 +318,22 @@ def process_repo_events(repos, open_items, state):
                 if item:
                     title = item["title"]
 
-            desktop_notify(
-                f"Activity in {repo}",
-                f"#{number}: {title}\n{details}",
-            )
+            if not is_first_run:
+                desktop_notify(
+                    f"Activity in {repo}",
+                    f"#{number}: {title}\n{details}",
+                )
             log_event(evt_type, category, repo, number, title, actor,
                       html_url or f"https://github.com/{repo}", details,
                       timestamp=created_at)
 
-            seen[event_id] = True
+            seen[event_id] = created_at
 
-    # Prune seen IDs (keep last 3000)
-    if len(seen) > 4000:
-        items = list(seen.items())
-        state["seen_event_ids"] = dict(items[-3000:])
-    else:
-        state["seen_event_ids"] = seen
+    # Prune seen IDs older than the cutoff
+    state["seen_event_ids"] = {
+        eid: ts for eid, ts in seen.items()
+        if isinstance(ts, str) and ts >= cutoff
+    }
 
 
 # ── Events Pruning ───────────────────────────────────────────────────────────
@@ -365,12 +365,13 @@ def main():
         return
 
     state = load_state()
+    is_first_run = not ITEMS_FILE.exists() or ITEMS_FILE.stat().st_size == 0
 
     # 1. Sync all open PRs/issues
     open_items = sync_open_items(repos)
 
     # 2. Fetch activity from repo events API (all users, correct timestamps)
-    process_repo_events(repos, open_items, state)
+    process_repo_events(repos, open_items, state, is_first_run=is_first_run)
     save_state(state)
 
     # 3. Prune old events
