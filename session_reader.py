@@ -9,9 +9,9 @@ CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 def encode_cwd(path):
     """Encode a CWD path to Claude's project directory name format.
 
-    Claude replaces both / and _ with - in project directory names.
+    Claude replaces /, _, and . with - in project directory names.
     """
-    return str(path).replace("/", "-").replace("_", "-")
+    return str(path).replace("/", "-").replace("_", "-").replace(".", "-")
 
 
 def get_sessions(cwd):
