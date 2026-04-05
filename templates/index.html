@@ -510,6 +510,9 @@
     updateAllTimes();
     setInterval(updateAllTimes, 30000);
     setInterval(poll, 30000);
+    // Full refresh aligned to 10-min cron intervals (+ 30s buffer for cron to finish)
+    const msToNext10 = (600000 - (Date.now() % 600000)) + 30000;
+    setTimeout(() => { location.reload(); setInterval(() => location.reload(), 600000); }, msToNext10);
     if ('Notification' in window && Notification.permission === 'default') document.getElementById('notif-banner').style.display = 'flex';
   </script>
 </body>
